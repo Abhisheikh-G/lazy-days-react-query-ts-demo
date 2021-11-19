@@ -1,3 +1,4 @@
+import axios, { AxiosResponse } from 'axios';
 import { useState } from 'react';
 import { useQuery, useQueryClient } from 'react-query';
 
@@ -10,12 +11,26 @@ import {
   setStoredUser,
 } from '../../../user-storage';
 
-async function getUser(user: User | null): Promise<User | null> {
+interface AxiosResponseWithCancel extends AxiosResponse {
+  cancel: () => void;
+}
+
+async function getUser(user: User | null): Promise<AxiosResponse> {
+  const source = axios.CancelToken.source();
   if (!user) return null;
-  const { data } = await axiosInstance.get(`/user/${user.id}`, {
-    headers: getJWTHeader(user),
-  });
-  return data.user;
+  const axiosResponse: AxiosResponseWithCancel = await axiosInstance.get(
+    `/user/${user.id}`,
+    {
+      headers: getJWTHeader(user),
+      cancelToken: source.token,
+    },
+  );
+
+  axiosResponse.cancel = () => {
+    source.cancel();
+  };
+
+  return axiosResponse;
 }
 
 interface UseUser {
@@ -27,9 +42,10 @@ interface UseUser {
 export function useUser(): UseUser {
   const [user, setUser] = useState<User | null>(getStoredUser());
   const queryClient = useQueryClient();
+
   useQuery(queryKeys.user, () => getUser(user), {
     enabled: !!user,
-    onSuccess: (data) => setUser(data),
+    onSuccess: (data: User) => setUser(data),
   });
 
   // meant to be called from useAuth
